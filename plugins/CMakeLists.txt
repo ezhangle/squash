@@ -3,6 +3,7 @@ set (plugins_available
   bsc
   bzip2
   crush
+  csc
   density
   doboz
   fari
