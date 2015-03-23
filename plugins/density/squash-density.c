@@ -34,9 +34,7 @@
 
 #include "density/src/density_api.h"
 
-#if !defined(DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE)
-#define DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE  (1 << 9)
-#endif
+#define SQUASH_DENSITY_DEFAULT_ALGORITHM DENSITY_COMPRESSION_MODE_CHAMELEON_ALGORITHM
 
 typedef enum {
   SQUASH_DENSITY_ACTION_INIT,
@@ -48,7 +46,7 @@ typedef enum {
 
 static size_t
 squash_density_get_max_compressed_size (SquashCodec* codec, size_t uncompressed_length) {
-  return DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE + uncompressed_length;
+  return DENSITY_MINIMUM_OUT_BUFFER_SIZE + uncompressed_length;
 }
 
 typedef struct SquashDensityOptions_s {
@@ -65,7 +63,7 @@ typedef struct SquashDensityStream_s {
   SquashDensityAction next;
   DENSITY_STREAM_STATE state;
 
-  uint8_t buffer[DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE];
+  uint8_t buffer[DENSITY_MINIMUM_OUT_BUFFER_SIZE];
   size_t buffer_length;
   size_t buffer_pos;
   bool buffer_active;
@@ -149,8 +147,20 @@ squash_density_parse_option (SquashOptions* options, const char* key, const char
 
   if (strcasecmp (key, "level") == 0) {
     const int level = (int) strtol (value, &endptr, 0);
-    if ( *endptr == '\0' && (level == 1 || level == 9) ) {
-      opts->mode = (level == 9) ? DENSITY_COMPRESSION_MODE_MANDALA_ALGORITHM : DENSITY_COMPRESSION_MODE_CHAMELEON_ALGORITHM;
+    if (*endptr == '\0') {
+      switch (level) {
+        case 1:
+          opts->mode = DENSITY_COMPRESSION_MODE_CHAMELEON_ALGORITHM;
+          break;
+        case 7:
+          opts->mode = DENSITY_COMPRESSION_MODE_CHEETAH_ALGORITHM;
+          break;
+        case 9:
+          opts->mode = DENSITY_COMPRESSION_MODE_LION_ALGORITHM;
+          break;
+        default:
+          return SQUASH_BAD_VALUE;
+      }
     } else {
       return SQUASH_BAD_VALUE;
     }
@@ -255,9 +265,9 @@ squash_density_process_stream (SquashStream* stream, SquashOperation operation) 
   }
 
   if (s->next == SQUASH_DENSITY_ACTION_INIT) {
-    if (stream->avail_out < DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE) {
+    if (stream->avail_out < DENSITY_MINIMUM_OUT_BUFFER_SIZE) {
       s->buffer_active = true;
-      s->state = density_stream_prepare (s->stream, (uint8_t*) stream->next_in, stream->avail_in, s->buffer, DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE);
+      s->state = density_stream_prepare (s->stream, (uint8_t*) stream->next_in, stream->avail_in, s->buffer, DENSITY_MINIMUM_OUT_BUFFER_SIZE);
     } else {
       s->buffer_active = false;
       s->state = density_stream_prepare (s->stream, (uint8_t*) stream->next_in, stream->avail_in, stream->next_out, stream->avail_out);
@@ -299,9 +309,9 @@ squash_density_process_stream (SquashStream* stream, SquashOperation operation) 
           s->output_invalid = true;
           return SQUASH_PROCESSING;
         } else {
-          if (stream->avail_out < DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE) {
+          if (stream->avail_out < DENSITY_MINIMUM_OUT_BUFFER_SIZE) {
             s->buffer_active = true;
-            density_stream_update_output (s->stream, s->buffer, DENSITY_STREAM_MINIMUM_OUT_BUFFER_SIZE);
+            density_stream_update_output (s->stream, s->buffer, DENSITY_MINIMUM_OUT_BUFFER_SIZE);
           } else {
             s->buffer_active = false;
             density_stream_update_output (s->stream, stream->next_out, stream->avail_out);
@@ -325,7 +335,7 @@ squash_density_process_stream (SquashStream* stream, SquashOperation operation) 
     switch (s->next) {
       case SQUASH_DENSITY_ACTION_INIT:
         if (stream->stream_type == SQUASH_STREAM_COMPRESS) {
-          DENSITY_COMPRESSION_MODE compression_mode =  DENSITY_COMPRESSION_MODE_CHAMELEON_ALGORITHM;
+          DENSITY_COMPRESSION_MODE compression_mode = SQUASH_DENSITY_DEFAULT_ALGORITHM;
           DENSITY_BLOCK_TYPE block_type = DENSITY_BLOCK_TYPE_DEFAULT;
           {
             SquashDensityOptions* opts = (SquashDensityOptions*) stream->options;
